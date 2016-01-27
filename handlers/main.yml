@@ -1,2 +1,30 @@
 ---
 # handlers file for Nainterceptor.mailserver
+
+- name: "Enable and restart postfix"
+  service:
+    name: postfix
+    state: restarted
+    enabled: yes
+  when: ansible_distribution == 'CentOS'
+
+- name: "Enable and restart dovecot"
+  service:
+    name: dovecot
+    state: restarted
+    enabled: yes
+  when: ansible_distribution == 'CentOS'
+
+- name: "Enable and restart spamassassin"
+  service:
+    name: spamassassin
+    state: restarted
+    enabled: yes
+  when: ansible_distribution == 'CentOS'
+
+- name: "Enable and restart opendkim"
+  service:
+    name: opendkim
+    state: restarted
+    enabled: yes
+  when: ansible_distribution == 'CentOS'

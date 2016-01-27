@@ -1,2 +1,188 @@
 ---
 # tasks file for Nainterceptor.mailserver
+
+- name: "Ensure sendmail is missing"
+  yum: name=sendmail state=absent
+
+- name: "Install required packages"
+  yum: name={{ item }} state=present
+  with_items:
+    - postfix
+    - dovecot
+    - dovecot-mysql
+    - spamassassin
+    - procmail
+    - dovecot-pigeonhole
+    - opendkim
+
+- name: "Add the user vmail"
+  user:
+    name: vmail
+    shell: "/sbin/nologin"
+    group: mail
+    append: yes
+    home: "/home/vmail"
+    comment: "Virtual mailbox"
+    uid: 101
+
+- name: "Configure postfix"
+  template: src=../files/postfix/{{ item }}.j2 dest=/etc/postfix/{{ item }}
+  with_items:
+      - main.cf
+      - master.cf
+      - mynetworks
+      - mysql_relay_domains_maps.cf
+      - mysql_virtual_alias_alias_maps.cf
+      - mysql_virtual_alias_domains.cf
+      - mysql_virtual_alias_maps.cf
+      - mysql_virtual_domains_maps.cf
+      - mysql_virtual_mailbox_alias_maps.cf
+      - mysql_virtual_mailbox_limit_maps.cf
+      - mysql_virtual_mailbox_maps.cf
+      - virtual_regexp
+      - transport
+  notify:
+    - Enable and restart postfix
+
+- name: "Generate certs"
+  shell: "openssl req -new -outform PEM \
+  -out /etc/pki/tls/certs/{{ hostname }}.{{ domain }}.crt -newkey rsa:2048 -nodes \
+  -keyout /etc/pki/tls/private/{{ hostname }}.{{ domain }}.key -keyform PEM -days 3650 -x509 \
+  -subj \"/C=FR/ST=Paris/L=Paris/O=Global Security/OU=IT Department/CN={{ domain }}\""
+  args:
+    copy: no
+    creates: "/etc/pki/tls/certs/{{ hostname }}.{{ domain }}.crt"
+
+- name: "Configure dovecot"
+  template: src=../files/dovecot/{{ item }}.j2 dest=/etc/dovecot/{{ item }}
+  with_items:
+      - dovecot.conf
+      - dovecot-sql.conf.ext
+      - dovecot-dict-quota.conf
+      - trash.conf
+  notify:
+    - Enable and restart dovecot
+
+- name: "Configure dovecot"
+  template: src=../files/dovecot/conf.d/{{ item }}.conf.j2 dest=/etc/dovecot/conf.d/{{ item }}.conf
+  with_items:
+      - 10-auth
+      - 10-mail
+      - 10-master
+      - 10-ssl
+      - 15-lda
+      - 20-imap
+      - 20-lmtp
+      - 20-managesieve
+      - 20-pop3
+      - 90-acl
+      - 90-quota
+      - 90-sieve
+  notify:
+    - Enable and restart dovecot
+    - Enable and restart spamassassin
+
+- name: "Prepare - create /etc in spool"
+  file:
+    dest: "/var/spool/postfix/etc/"
+    state: directory
+    group: root
+    owner: postfix
+    recurse: yes
+  notify:
+    - Enable and restart postfix
+
+- name: "Prepare - create /etc/services in spool"
+  copy:
+    src: "/etc/{{ item }}"
+    dest: "/var/spool/postfix/etc/{{ item }}"
+    group: root
+    owner: postfix
+  with_items:
+      - services
+      - resolv.conf
+  notify:
+    - Enable and restart postfix
+
+- name: "Prepare - sieve path if necessary"
+  file:
+    dest: "/var/lib/dovecot/sieve/"
+    mode: 0755
+    state: directory
+    group: mail
+    owner: vmail
+    recurse: yes
+
+- name: "Prepare - sieve file if necessary"
+  file:
+    dest: "/var/lib/dovecot/sieve/default.sieve"
+    mode: 0755
+    group: mail
+    owner: vmail
+    state: touch
+  notify:
+    - Enable and restart dovecot
+    - Enable and restart spamassassin
+
+- name: "Configure dovecot"
+  template: src=../files/dovecot/sieve/globalfilter.sieve.j2 dest=/var/lib/dovecot/sieve/globalfilter.sieve
+  notify:
+    - Enable and restart dovecot
+    - Enable and restart spamassassin
+
+- name: "Replace dovecot service"
+  copy: src=../files/dovecot/dovecot.service dest=/usr/lib/systemd/system/dovecot.service
+  notify:
+    - Enable and restart dovecot
+
+- name: "Add the user opendkim"
+  user:
+    name: opendkim
+    group: opendkim
+    shell: "/sbin/nologin"
+    append: yes
+    system: yes
+
+- name: "DKIM - create /etc/opendkim/keys/$domain"
+  file:
+    dest: "/etc/opendkim/keys/{{ item }}"
+    mode: 0755
+    state: directory
+    group: opendkim
+    owner: opendkim
+    recurse: yes
+  with_items: handle_domains
+
+- name: "DKIM - Generate"
+  shell: "opendkim-genkey -D /etc/opendkim/keys/{{ item }}/ -d {{ item }} -s default"
+  args:
+    chdir: "/etc/opendkim/keys/{{ item }}"
+    creates: "/etc/opendkim/keys/{{ item }}/default.txt"
+  with_items: handle_domains
+  become: yes
+  become_user: opendkim
+
+- name: "DKIM - Move private"
+  shell: "mv default.private default && chmod 700 default"
+  args:
+    chdir: "/etc/opendkim/keys/{{ item }}"
+    creates: "/etc/opendkim/keys/{{ item }}/default"
+  with_items: handle_domains
+  become: yes
+  become_user: opendkim
+  notify:
+    - Enable and restart opendkim
+
+- name: "Configure opendkim"
+  template: src=../files/opendkim/opendkim.conf.j2 dest=/etc/opendkim.conf
+
+- name: "Configure opendkim tables"
+  template:
+    src: "../files/opendkim/{{ item }}.j2"
+    dest: "/etc/opendkim/{{ item }}"
+    group: opendkim
+    owner: opendkim
+  with_items:
+      - KeyTable
+      - TrustedHosts
+      - SigningTable

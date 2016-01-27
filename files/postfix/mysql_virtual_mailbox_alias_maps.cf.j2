@@ -1,0 +1,5 @@
+hosts = {{ mysql_hostname }}
+user = {{ mysql_username }}
+password = {{ mysql_password }}
+dbname = {{ mysql_database }}
+query = SELECT maildir FROM mailbox, alias_domain WHERE alias_domain.alias_domain = '%d' AND mailbox.username = concat('%u', '@', alias_domain.target_domain ) AND mailbox.active = 1

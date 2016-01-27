@@ -1,0 +1,5 @@
+hosts = {{ mysql_hostname }}
+user = {{ mysql_username }}
+password = {{ mysql_password }}
+dbname = {{ mysql_database }}
+query = SELECT domain FROM domain WHERE domain='%s' AND backupmx = '0' AND active = '1'

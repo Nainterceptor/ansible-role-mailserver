@@ -1,2 +1,4 @@
 ---
 # defaults file for Nainterceptor.mailserver
+handle_domains: # Add here then fetch & cat the file /etc/opendkim/keys/$domain/default.txt to apply to DNS
+  - localhost.tld

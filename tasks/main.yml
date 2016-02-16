@@ -50,7 +50,6 @@
   -keyout /etc/pki/tls/private/{{ hostname }}.{{ domain }}.key -keyform PEM -days 3650 -x509 \
   -subj \"/C=FR/ST=Paris/L=Paris/O=Global Security/OU=IT Department/CN={{ domain }}\""
   args:
-    copy: no
     creates: "/etc/pki/tls/certs/{{ hostname }}.{{ domain }}.crt"
 
 - name: "Configure dovecot"

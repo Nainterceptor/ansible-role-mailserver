@@ -85,21 +85,31 @@
   file:
     dest: "/var/spool/postfix/etc/"
     state: directory
-    group: root
-    owner: postfix
     recurse: yes
   notify:
     - Enable and restart postfix
 
-- name: "Prepare - create /etc/services in spool"
-  copy:
-    src: "/etc/{{ item }}"
-    dest: "/var/spool/postfix/etc/{{ item }}"
-    group: root
-    owner: postfix
-  with_items:
-      - services
-      - resolv.conf
+- stat: path=/etc/services
+  register: etc_services
+
+- stat: path=/var/spool/postfix/etc/services
+  register: postfix_etc_services
+
+- name: "Prepare - replace /etc/services in spool"
+  command: cp /etc/services /var/spool/postfix/etc/services
+  when: etc_services.stat.md5 != postfix_etc_services.stat.md5
+  notify:
+    - Enable and restart postfix
+
+- stat: path=/etc/resolv.conf
+  register: etc_resolvconf
+
+- stat: path=/var/spool/postfix/etc/resolv.conf
+  register: postfix_etc_resolvconf
+
+- name: "Prepare - replace /etc/resolv.conf in spool"
+  command: cp /etc/resolv.conf /var/spool/postfix/etc/resolv.conf
+  when: etc_resolvconf.stat.md5 != postfix_etc_resolvconf.stat.md5
   notify:
     - Enable and restart postfix
 
@@ -145,7 +155,7 @@
 - name: "DKIM - create /etc/opendkim/keys/$domain"
   file:
     dest: "/etc/opendkim/keys/{{ item }}"
-    mode: 0755
+    mode: 0700
     state: directory
     group: opendkim
     owner: opendkim
